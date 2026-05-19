@@ -5,6 +5,7 @@
 # Date: 31/03/2026
 
 import sys
+from typing import Optional
 
 RESET = "\033[0m"
 COLORS = {
@@ -15,7 +16,7 @@ COLORS = {
     "CRITICAL": "\033[41m\033[97m",
 }
 
-def log(level: str, msg: str, stderr: bool | None = None) -> None:
+def log(level: str, msg: str, stderr: Optional[bool] = None) -> None:
     lvl = level.upper()
     color = COLORS.get(lvl, "")
     if stderr is None:

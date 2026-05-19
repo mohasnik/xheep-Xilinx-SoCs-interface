@@ -28,8 +28,12 @@ NOTEBOOK_DIR := /home/$(USER)/jupyter_notebooks/xheep
 LINKER    ?= on_chip
 OVERLAY   ?= xilinx_core_v_mini_mcu_wrapper.bit
 APP       ?= 
+JTAG_ADDR ?= 0xA4000000
+GPIO_ADDR ?= 0xA4020000
+UART_DEV  ?= /dev/ttyUL0
+UART_BAUD ?= 115200
 
-.PHONY: help install install-notebook uninstall uninstall-notebook run clean
+.PHONY: help install install-notebook uninstall uninstall-notebook run run-vpk180 clean
 
 # help target prints this file with comments as descriptions for each target
 help:
@@ -85,6 +89,19 @@ run:
 		exit 1; \
 	fi
 	@python3 src/xheepRun.py -o $(OVERLAY) -f $(APP) -l $(LINKER)
+
+## Run application on VPK180 through static AXI JTAG/GPIO addresses
+## @param APP=/path/to/application.elf      Path to X-HEEP ELF
+## @param JTAG_ADDR=0xA4000000              AXI JTAG base address
+## @param GPIO_ADDR=0xA4020000              AXI GPIO base address
+## @param UART_DEV=/dev/ttyUL0              AXI UARTLite device
+## @param UART_BAUD=115200                  AXI UARTLite baud rate
+run-vpk180:
+	@if [ -z "$(APP)" ]; then \
+		echo "Error: set APP=/path/to/application.elf"; \
+		exit 1; \
+	fi
+	@python3 src/xheepRun_vpk180.py -f $(APP) --jtag-addr $(JTAG_ADDR) --gpio-addr $(GPIO_ADDR) --uart $(UART_DEV) --baud $(UART_BAUD)
 
 ## @section Cleanup
 

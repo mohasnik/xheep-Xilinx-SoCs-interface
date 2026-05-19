@@ -32,6 +32,7 @@ Users can deploy, test, and debug the core via SSH, entirely eliminating the nee
 | -------- | ------------------ | --------- | ---------------------------------------------------------- |
 | PYNQ-Z2  | Zynq-7000 (XC7Z020)| Supported | Requires `PS_ENABLE` to be active in the x-heep bitstream. |
 | AUP-ZU3  | ZynqMP (XCZU3EG)   | Supported | Requires `PS_ENABLE` to be active in the x-heep bitstream. |
+| VPK180   | Versal Premium     | Experimental | Static PetaLinux flow through fixed AXI JTAG/GPIO/UART addresses. |
 
 > **Important:** Ensure that the Vivado version used to implement x-heep is consistent with the PYNQ distribution installed on the board. 
 >                Mismatched versions may cause issues with JTAG TAP identification and bitstream loading.
@@ -204,6 +205,34 @@ python src/xheepRun.py \
 * `-l, --linker`: Execution mode: `on_chip` (default), `flash_load`, or `flash_exec`
 * `--verify`: Verify the loaded firmware against the source file after programming
 * `--force`: Force a full PL reset and UART reconfiguration even if the bitstream hasn't changed
+
+### VPK180 Static PetaLinux Flow
+
+For Versal VPK180 systems where PL is already loaded by the boot PDI and the AXI
+peripherals are described in the static Linux device tree, use the dedicated
+runner instead of the PYNQ overlay flow:
+
+```bash
+sudo python3 src/xheepRun_vpk180.py \
+  -f path/to/firmware.elf \
+  --jtag-addr 0xA4000000 \
+  --gpio-addr 0xA4020000 \
+  --uart /dev/ttyUL0 \
+  --baud 115200
+```
+
+The same flow is available from Make:
+
+```bash
+sudo make run-vpk180 APP=path/to/firmware.elf
+```
+
+This mode does not load a `.bit`/PDI and does not use SPI flash. It assumes:
+
+* AXI JTAG is mapped at `0xA4000000`.
+* AXI GPIO is mapped at `0xA4020000`.
+* AXI UARTLite is already available as `/dev/ttyUL0`.
+* OpenOCD was built with `--enable-xlnx-axi-xvc`.
 
 ### Serial Monitoring
 

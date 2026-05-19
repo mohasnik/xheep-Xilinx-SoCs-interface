@@ -49,5 +49,19 @@
   - __init__(overlay, memAddr, memRng): Initialize JTAG peripheral.
   - getAddr(): Return JTAG base address.
 
+### mmio.py
+- **DevMemMMIO**: Minimal `/dev/mem` helper for static PetaLinux systems.
+  - read(offset): Read a 32-bit little-endian register.
+  - write(offset, value): Write a 32-bit little-endian register.
+
+### gpio_static.py
+- **xheepStaticGPIO**: AXI GPIO controller for systems without PYNQ.
+  - Uses a fixed physical address, defaulting to VPK180 `0xA4020000`.
+  - Provides the same reset, boot mode, JTAG reset, and exit status helpers as `xheepGPIO`.
+
+### jtag_static.py
+- **xheepStaticJTAG**: Static AXI JTAG address helper.
+  - Uses a fixed physical address, defaulting to VPK180 `0xA4000000`.
+
 ### logger.py
 - **log(level, msg, stderr=None)**: Print colored messages to stdout/stderr depending on the level.
