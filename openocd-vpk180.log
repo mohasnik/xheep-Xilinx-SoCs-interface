@@ -1,0 +1,29 @@
+Open On-Chip Debugger 0.12.0+dev-02377-gb9e401616-dirty (2026-01-25-09:29)
+Licensed under GNU GPL v2
+For bug reports, read
+	http://openocd.org/doc/doxygen/bugs.html
+0xa4000000
+DEPRECATED! use 'telnet port', not 'telnet_port'
+DEPRECATED! use 'gdb port', not 'gdb_port'
+DEPRECATED! use 'tcl port' not 'tcl_port'
+Info : Opening /dev/mem for AXI communication
+Info : Mapped Xilinx XVC/AXI vaddr 0xffff9340a000 paddr 0xa4000000
+Info : Note: The adapter "xlnx_axi_xvc" doesn't support configurable speed
+Info : WARN: XVC driver has no reset.
+Error: JTAG scan chain interrogation failed: all zeroes
+Error: Check JTAG interface, timings, target power, etc.
+Error: Trying to use configured scan chain anyway...
+Error: riscv.cpu: IR capture error; saw 0x00 not 0x01
+Warn : Bypassing JTAG setup events due to errors
+Error: [riscv0] Could not read dtmcontrol. Check JTAG connectivity/board power.
+Error: [riscv0] Examination failed
+Warn : target riscv0 examination failed
+Info : [riscv0] starting gdb server on 3333
+Info : Listening on port 3333 for gdb connections
+Error: Target not examined yet
+/home/petalinux/xheep-Xilinx-SoCs-interface/cfg/xheep_xilinx_xvc.cfg:35: Error: 
+in procedure 'script' 
+at file "embedded:startup.tcl", line 88
+at file "/home/petalinux/xheep-Xilinx-SoCs-interface/cfg/xheep_xilinx_xvc.cfg", line 35
+Error: [riscv0] Unsupported DTM version: -1
+Error: [riscv0] Could not identify target type.
