@@ -59,6 +59,10 @@
   - Uses a fixed physical address, defaulting to VPK180 `0xA4020000`.
   - Provides the same reset, boot mode, JTAG reset, and exit status helpers as `xheepGPIO`.
 
+### flash_static.py
+- **xheepStaticFlashProgrammer**: SPI flash programmer for static `/dev/mem` systems.
+  - Uses `DevMemMMIO` instead of PYNQ `MMIO`, defaulting to VPK180 AXI Quad SPI at `0xA4030000`.
+
 ### jtag_static.py
 - **xheepStaticJTAG**: Static AXI JTAG address helper.
   - Uses a fixed physical address, defaulting to VPK180 `0xA4000000`.

@@ -215,8 +215,10 @@ runner instead of the PYNQ overlay flow:
 ```bash
 sudo python3 src/xheepRun_vpk180.py \
   -f path/to/firmware.elf \
+  -l on_chip \
   --jtag-addr 0xA4000000 \
   --gpio-addr 0xA4020000 \
+  --spi-addr 0xA4030000 \
   --uart /dev/ttyUL0 \
   --baud 115200
 ```
@@ -224,13 +226,18 @@ sudo python3 src/xheepRun_vpk180.py \
 The same flow is available from Make:
 
 ```bash
-sudo make run-vpk180 APP=path/to/firmware.elf
+sudo make run-vpk180 APP=path/to/firmware.elf LINKER=on_chip
+sudo make run-vpk180 APP=path/to/firmware.bin LINKER=flash_exec
 ```
 
-This mode does not load a `.bit`/PDI and does not use SPI flash. It assumes:
+This mode does not load a `.bit`/PDI. For `on_chip`, it loads the ELF through
+AXI JTAG. For `flash_load` and `flash_exec`, it programs the external SPI NOR
+flash through AXI Quad SPI; flash modes require a `.bin` file, or a same-name
+`.bin` beside the selected `.elf`. It assumes:
 
 * AXI JTAG is mapped at `0xA4000000`.
 * AXI GPIO is mapped at `0xA4020000`.
+* AXI Quad SPI is mapped at `0xA4030000`.
 * AXI UARTLite is already available as `/dev/ttyUL0`.
 * OpenOCD was built with `--enable-xlnx-axi-xvc`.
 

@@ -13,11 +13,13 @@ import telnetlib
 from pathlib import Path
 from typing import Tuple
 
-from xheepDriver import log, xheepStaticGPIO, xheepStaticJTAG
+from xheepDriver import log, xheepStaticFlashProgrammer, xheepStaticGPIO, xheepStaticJTAG
 
 
 DEFAULT_JTAG_ADDR = 0xA4000000
 DEFAULT_GPIO_ADDR = 0xA4020000
+DEFAULT_SPI_ADDR = 0xA4030000
+DEFAULT_SPI_RANGE = 0x00010000
 DEFAULT_UART = "/dev/ttyUL0"
 DEFAULT_BAUD = 115200
 
@@ -100,17 +102,29 @@ def flush_uart(device: str, baud: int) -> None:
         log("warning", f"Could not flush UART {device}: {exc}")
 
 
+def wait_exit(gpio: xheepStaticGPIO, timeout: float) -> Tuple[int, int]:
+    deadline = time.monotonic() + timeout
+    exit_valid, exit_value = gpio.getExitCode()
+    while not exit_valid and time.monotonic() < deadline:
+        time.sleep(0.01)
+        exit_valid, exit_value = gpio.getExitCode()
+    return exit_valid, exit_value
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Run X-HEEP on VPK180 through AXI JTAG")
-    ap.add_argument("-f", "--firmware", required=True, help="Path to X-HEEP ELF")
+    ap = argparse.ArgumentParser(description="Run X-HEEP on VPK180 through static AXI helper IPs")
+    ap.add_argument("-f", "--firmware", required=True, help="Path to X-HEEP ELF or BIN")
+    ap.add_argument("-l", "--linker", choices=["on_chip", "flash_load", "flash_exec"], default="on_chip")
     ap.add_argument("--jtag-addr", type=parse_int, default=parse_int(os.getenv("XHEEP_JTAG_ADDR", hex(DEFAULT_JTAG_ADDR))))
     ap.add_argument("--gpio-addr", type=parse_int, default=parse_int(os.getenv("XHEEP_GPIO_ADDR", hex(DEFAULT_GPIO_ADDR))))
+    ap.add_argument("--spi-addr", type=parse_int, default=parse_int(os.getenv("XHEEP_SPI_ADDR", hex(DEFAULT_SPI_ADDR))))
+    ap.add_argument("--spi-range", type=parse_int, default=parse_int(os.getenv("XHEEP_SPI_RANGE", hex(DEFAULT_SPI_RANGE))))
     ap.add_argument("--uart", default=os.getenv("XHEEP_UART", DEFAULT_UART))
     ap.add_argument("--baud", type=int, default=int(os.getenv("XHEEP_UART_BAUD", DEFAULT_BAUD)))
     ap.add_argument("--cfg", default="cfg/xheep_xilinx_xvc.cfg", help="OpenOCD AXI XVC config")
     ap.add_argument("--openocd", default=os.getenv("OPENOCD", "openocd"))
     ap.add_argument("--openocd-log", default="xheep_logs/openocd-vpk180.log")
-    ap.add_argument("--verify", action="store_true", help="Ask OpenOCD to verify after load")
+    ap.add_argument("--verify", action="store_true", help="Verify after JTAG load or flash programming")
     ap.add_argument("--timeout", type=float, default=30.0, help="Seconds to wait for GPIO exit_valid")
     ap.add_argument("--no-wait", action="store_true", help="Do not wait for GPIO exit_valid")
     ap.add_argument("--no-uart-flush", action="store_true", help="Do not flush UART before resume")
@@ -123,23 +137,80 @@ def main() -> int:
     if not fw.is_file():
         log("error", f"Missing firmware: {fw}")
         return 2
-    if not cfg.is_file():
-        log("error", f"Missing OpenOCD config: {cfg}")
-        return 2
 
-    try:
-        entry = elf_entry(fw)
-    except ValueError as exc:
-        log("error", str(exc))
-        return 2
+    entry = None
+    bin_file = None
+    if args.linker == "on_chip":
+        if not cfg.is_file():
+            log("error", f"Missing OpenOCD config: {cfg}")
+            return 2
+        try:
+            entry = elf_entry(fw)
+        except ValueError as exc:
+            log("error", str(exc))
+            return 2
+    else:
+        if fw.suffix.lower() == ".elf":
+            bin_file = fw.with_suffix(".bin")
+            if not bin_file.exists():
+                log("error", "Flash mode requires .bin file")
+                return 2
+        else:
+            bin_file = fw
 
     gpio = None
+    flash = None
     proc = None
     fh = None
 
     try:
         log("info", f"Using AXI GPIO at 0x{args.gpio_addr:08x}")
         gpio = xheepStaticGPIO(args.gpio_addr)
+
+        if args.linker in ["flash_load", "flash_exec"]:
+            log("info", f"Using AXI Quad SPI at 0x{args.spi_addr:08x}")
+            flash = xheepStaticFlashProgrammer(args.spi_addr, gpio, args.spi_range)
+
+            try:
+                ok = flash.program_file(bin_file, verify=args.verify)
+            except KeyboardInterrupt:
+                log("warning", "Interrupted during flash programming")
+                return 130
+            except Exception as exc:
+                log("error", f"Flash programming failed: {exc}")
+                import traceback
+
+                traceback.print_exc()
+                return 1
+
+            if not ok:
+                return 1
+
+            if not args.no_uart_flush:
+                flush_uart(args.uart, args.baud)
+
+            log("info", "Preparing X-HEEP for flash boot")
+            gpio.setSpiFlashControl(False)
+            gpio.resetJTAG()
+            gpio.assertReset()
+            if args.linker == "flash_load":
+                gpio.loadFromFlash()
+            else:
+                gpio.execFromFlash()
+            gpio.deassertReset()
+            time.sleep(0.1)
+
+            if args.no_wait:
+                return 0
+
+            log("info", "Waiting for GPIO exit_valid")
+            exit_valid, exit_value = wait_exit(gpio, args.timeout)
+
+            if not exit_valid:
+                log("warning", "Timeout waiting for GPIO exit_valid")
+
+            print(f"exit_valid={exit_valid} | exit_value={exit_value}")
+            return 0 if exit_value == 0 else 1
 
         log("info", "Preparing X-HEEP for JTAG boot")
         gpio.setSpiFlashControl(False)
@@ -179,11 +250,7 @@ def main() -> int:
             return 0
 
         log("info", "Waiting for GPIO exit_valid")
-        deadline = time.monotonic() + args.timeout
-        exit_valid, exit_value = gpio.getExitCode()
-        while not exit_valid and time.monotonic() < deadline:
-            time.sleep(0.01)
-            exit_valid, exit_value = gpio.getExitCode()
+        exit_valid, exit_value = wait_exit(gpio, args.timeout)
 
         if not exit_valid:
             log("warning", "Timeout waiting for GPIO exit_valid")
@@ -199,10 +266,11 @@ def main() -> int:
     finally:
         if proc:
             shutdown_ocd(proc, fh)
+        if flash:
+            flash.close()
         if gpio:
             gpio.close()
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

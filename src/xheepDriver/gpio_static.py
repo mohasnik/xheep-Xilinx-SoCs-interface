@@ -78,6 +78,14 @@ class xheepStaticGPIO:
         self.setBit(0, self.BIT_BOOTSEL, 0)
         self.setBit(0, self.BIT_EXECFLASH, 0)
 
+    def loadFromFlash(self) -> None:
+        self.setBit(0, self.BIT_BOOTSEL, 1)
+        self.setBit(0, self.BIT_EXECFLASH, 0)
+
+    def execFromFlash(self) -> None:
+        self.setBit(0, self.BIT_BOOTSEL, 1)
+        self.setBit(0, self.BIT_EXECFLASH, 1)
+
     def getExitCode(self) -> Tuple[int, int]:
         exit_val = self.getChannel(1)
         exit_valid = (exit_val >> self.EXIT_VALID) & 0x1
