@@ -11,6 +11,8 @@ import sys
 import termios
 import time
 
+from xheepDriver.mmio import DevMemMMIO
+
 
 BAUD_RATES = {
     9600: termios.B9600,
@@ -19,6 +21,15 @@ BAUD_RATES = {
     57600: termios.B57600,
     115200: termios.B115200,
 }
+
+UARTLITE_RX_FIFO = 0x00
+UARTLITE_STATUS = 0x08
+UARTLITE_STATUS_RX_VALID = 1 << 0
+UARTLITE_RANGE = 0x10000
+
+
+def parse_int(value: str) -> int:
+    return int(value, 0)
 
 
 def clear_flag(value: int, name: str) -> int:
@@ -103,14 +114,45 @@ def monitor(device: str, baud: int, seconds: float, configure: bool, strict_conf
         os.close(fd)
 
 
+def monitor_mmio(addr: int, addr_range: int, seconds: float) -> int:
+    mmio = DevMemMMIO(addr, addr_range)
+
+    try:
+        print(f"monitoring AXI UARTLite at 0x{addr:08x} for {seconds:g} seconds", file=sys.stderr)
+        deadline = time.monotonic() + seconds
+
+        while True:
+            received = False
+            while mmio.read(UARTLITE_STATUS) & UARTLITE_STATUS_RX_VALID:
+                sys.stdout.buffer.write(bytes([mmio.read(UARTLITE_RX_FIFO) & 0xFF]))
+                received = True
+
+            if received:
+                sys.stdout.buffer.flush()
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(remaining, 0.001))
+
+        return 0
+    finally:
+        mmio.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Monitor UART output for a fixed duration")
     parser.add_argument("-d", "--device", default="/dev/ttyUL0", help="UART device")
+    parser.add_argument("-a", "--addr", type=parse_int, help="AXI UARTLite physical base address")
+    parser.add_argument("--range", type=parse_int, default=UARTLITE_RANGE, help="AXI UARTLite address range")
     parser.add_argument("-b", "--baud", type=int, default=9600, help="UART baud rate")
     parser.add_argument("-t", "--seconds", type=float, default=5.0, help="Monitor duration")
     parser.add_argument("--no-config", action="store_true", help="Read without changing UART settings")
     parser.add_argument("--strict-config", action="store_true", help="Fail if UART configuration is rejected")
     args = parser.parse_args()
+
+    if args.addr is not None:
+        return monitor_mmio(args.addr, args.range, args.seconds)
 
     return monitor(args.device, args.baud, args.seconds, not args.no_config, args.strict_config)
 
