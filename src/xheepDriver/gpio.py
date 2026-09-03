@@ -6,8 +6,14 @@
 
 import time
 from pynq import Overlay, MMIO
+from abc import abstractmethod
+from mmio import PSMMIO, DevMemMMIO, PynqMemMMIO
+from driver import PLOverlay
 
-class xheepGPIO:
+
+
+
+class xheepGPIO():
     # AXI GPIO register offsets
     CH1_DATA = 0x00
     CH1_TRI  = 0x04
@@ -23,9 +29,10 @@ class xheepGPIO:
     EXIT_VALID = 0
     EXIT_VALUE = 1
 
-    def __init__(self, overlay: Overlay, memAddr: int, memRng: int):
+
+    def __init__(self, overlay : PLOverlay, mmio : PSMMIO):
         self._ol = overlay
-        self._mmio = MMIO(memAddr, memRng)
+        self._mmio = mmio
 
         # Set direction: CH1 = output, CH2 = input
         self._mmio.write(self.CH1_TRI, 0x0)
@@ -48,7 +55,7 @@ class xheepGPIO:
         reg = int(self._mmio.read(channel << 3))
         reg = (reg | (1 << bit)) if value else (reg & ~(1 << bit))
         self._mmio.write(channel << 3, reg)
-
+        
     def getBit(self, channel: int, bit: int) -> int:
         return (int(self._mmio.read(channel << 3)) >> bit) & 0x1
 
@@ -57,6 +64,52 @@ class xheepGPIO:
 
     def getChannel(self, channel: int) -> int:
         return int(self._mmio.read(channel << 3))
+
+    def assertReset(self) -> None:
+        self.setBit(0, self.BIT_RST_NI, 0)
+        time.sleep(1e-3)
+    
+    def deassertReset(self) -> None:
+        self.setBit(0, self.BIT_RST_NI, 1)
+        time.sleep(1e-3)
+    
+    def resetXheep(self) -> None:
+        self.assertReset()
+        self.deassertReset()
+    
+    def resetJTAG(self) -> None:
+        self.setBit(0, self.BIT_TRST_NI, 0)
+        time.sleep(1e-3)
+        self.setBit(0, self.BIT_TRST_NI, 1)
+        time.sleep(1e-3)
+
+    def bootFromJTAG(self) -> None:
+        self.setBit(0, self.BIT_BOOTSEL, 0)
+        self.setBit(0, self.BIT_EXECFLASH, 0)
+    
+    def getExitCode(self) -> tuple[int, int]:
+        exitVal = self.getChannel(1)
+        exit_valid = (exitVal >> self.EXIT_VALID) & 0x1
+        exit_value = (exitVal >> self.EXIT_VALUE) & 0x1
+        return (exit_valid, exit_value)
+
+
+class xheepStaticGPIO(xheepGPIO):
+    def __init__(self, overlay : PLOverlay, mem_addr: int = 0xA4020000, mem_range: int = 0x10000):
+        self._mmio : DevMemMMIO = None
+
+        mmio = DevMemMMIO(mem_addr, mem_range)
+        super().__init__(overlay, mmio)
+
+    def close(self) -> None:
+        self._mmio.close()
+
+
+class xheepPynqGPIO(xheepGPIO):
+
+    def __init__(self, overlay: Overlay, memAddr: int, memRng: int):
+        mmio = PynqMemMMIO(memAddr, memRng)
+        super().__init__(overlay, mmio)
 
     def setSpiFlashControl(self, use_ps: bool) -> None:
         """
@@ -81,38 +134,10 @@ class xheepGPIO:
         self._mmio.write(self.CH1_DATA, new_val)
         time.sleep(20e-3)  # Wait for mux to settle
 
-    def assertReset(self) -> None:
-        self.setBit(0, self.BIT_RST_NI, 0)
-        time.sleep(1e-3)
-
-    def deassertReset(self) -> None:
-        self.setBit(0, self.BIT_RST_NI, 1)
-        time.sleep(1e-3)
-
     def resetXheep(self) -> None:
         self.assertReset()
         self.deassertReset()
 
-    def resetJTAG(self) -> None:
-        self.setBit(0, self.BIT_TRST_NI, 0)
-        time.sleep(1e-3)
-        self.setBit(0, self.BIT_TRST_NI, 1)
-        time.sleep(1e-3)
-
-    def bootFromJTAG(self) -> None:
-        self.setBit(0, self.BIT_BOOTSEL, 0)
-        self.setBit(0, self.BIT_EXECFLASH, 0)
-
-    def loadFromFlash(self) -> None:
-        self.setBit(0, self.BIT_BOOTSEL, 1)
-        self.setBit(0, self.BIT_EXECFLASH, 0)
-
     def execFromFlash(self) -> None:
         self.setBit(0, self.BIT_BOOTSEL, 1)
-        self.setBit(0, self.BIT_EXECFLASH, 1)
-
-    def getExitCode(self) -> tuple[int, int]:
-        exitVal = self.getChannel(1)
-        exit_valid = (exitVal >> self.EXIT_VALID) & 0x1
-        exit_value = (exitVal >> self.EXIT_VALUE) & 0x1
-        return (exit_valid, exit_value)
+        self.setBit(0, self.BIT_EXECFLASH, 1)    

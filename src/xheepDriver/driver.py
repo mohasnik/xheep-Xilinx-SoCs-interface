@@ -16,6 +16,27 @@ from .uart import xheepUART
 from .spi import xheepSPI
 from .jtag import xheepJTAG
 from .flash import xheepFlashProgrammer
+from abc import abstractmethod
+
+
+
+
+
+
+class xheepDriver():
+
+    IP_GPIO = "axi_gpio"
+    IP_UART = "axi_uartlite"
+    IP_JTAG = "axi_jtag"
+    IP_SPI  = "axi_quad_spi"
+
+
+    def __init__(self, ):
+        self.jtag 
+        self.uart
+        self.gpio 
+
+
 
 class xheepDriver(Overlay):
     IP_GPIO = "axi_gpio"

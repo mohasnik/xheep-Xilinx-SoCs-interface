@@ -5,9 +5,11 @@
 # Date: 31/03/2026
 
 from pynq import Overlay
+from driver import PLOverlay
+
 
 class xheepJTAG:
-    def __init__(self, overlay: Overlay, memAddr: int, memRng: int):
+    def __init__(self, overlay: PLOverlay, memAddr: int, memRng: int):
         self._ol = overlay
         self.memAddr = int(memAddr)
         self.memRng = int(memRng)

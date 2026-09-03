@@ -6,9 +6,35 @@
 import mmap
 import os
 import struct
+from abc import abstractmethod
+from pynq import MMIO
 
 
-class DevMemMMIO:
+class PSMMIO:
+    def __int__(self, base_addr : int, addr_range : int):
+        pass
+
+    @abstractmethod
+    def write(self, offset: int, value: int):
+        pass
+
+    @abstractmethod
+    def read(self, offset: int):
+        pass
+
+class PynqMemMMIO(PSMMIO, MMIO):
+    def __int__(self, base_addr, addr_range):
+        self._mmio = MMIO(base_addr, addr_range)
+
+    def write(self, offset, value):
+        self._mmio.write(offset, value)
+    
+    def read(self, offset):
+        return self._mmio.read(offset)
+
+
+# Device MMIO sigture for VPK180
+class DevMemMMIO(PSMMIO):
     def __init__(self, base_addr: int, addr_range: int = 0x10000):
         page_size = mmap.PAGESIZE
         page_base = base_addr & ~(page_size - 1)

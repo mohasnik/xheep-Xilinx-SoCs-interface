@@ -5,9 +5,6 @@
 # Date: 31/03/2026
 
 from .logger import log
-from .flash_static import xheepStaticFlashProgrammer
-from .gpio_static import xheepStaticGPIO
-from .jtag_static import xheepStaticJTAG
 
 try:
     from .gpio import xheepGPIO
@@ -32,7 +29,6 @@ __all__ = [
     "xheepJTAG",
     "xheepFlashProgrammer",
     "xheepDriver",
-    "xheepStaticFlashProgrammer",
     "xheepStaticGPIO",
     "xheepStaticJTAG",
 ]
