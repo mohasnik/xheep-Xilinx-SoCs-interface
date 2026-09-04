@@ -35,6 +35,12 @@ DEFAULT_UART = "/dev/ttyUL0"
 DEFAULT_UART_BAUD = 115200
 UART_POLL_SECONDS = 0.02
 UART_DRAIN_SECONDS = 0.2
+_DEBUG = False
+
+
+def _trace(message: str) -> None:
+    if _DEBUG:
+        print(f"DEBUG: {message}", file=sys.stderr, flush=True)
 
 
 @dataclass(frozen=True)
@@ -98,6 +104,7 @@ class TestVectorGenerator:
     ddr_window_size: int = DDR_WINDOW_SIZE
     alignment: int = UINT32_SIZE
     seed: Optional[int] = None
+    fixed_offset: Optional[int] = None
     value_min: int = 0
     value_max: int = 0xFFFFFFFF
     reserved_values: tuple[int, ...] = (FOOTER_DDNE,)
@@ -124,8 +131,17 @@ class TestVectorGenerator:
             raise ValueError("value_count does not fit in the DDR test window")
 
         max_offset = self.ddr_window_size - byte_count
-        aligned_slots = max_offset // self.alignment
-        offset_bytes = self._rng.randint(0, aligned_slots) * self.alignment
+        if self.fixed_offset is None:
+            aligned_slots = max_offset // self.alignment
+            offset_bytes = self._rng.randint(0, aligned_slots) * self.alignment
+        else:
+            offset_bytes = self.fixed_offset
+            if offset_bytes < 0:
+                raise ValueError("fixed_offset must be non-negative")
+            if offset_bytes % self.alignment != 0:
+                raise ValueError("fixed_offset must be aligned")
+            if offset_bytes > max_offset:
+                raise ValueError("fixed_offset does not fit in the DDR test window")
         expected_values = tuple(self._random_value() for _ in range(value_count))
 
         return DdrTestVector.from_values(
@@ -175,10 +191,17 @@ class ReservedDdrMemory:
             raise ValueError("values must contain at least one word")
 
         payload = struct.pack(f"<{len(words)}I", *words)
+        _trace(
+            "ReservedDdrMemory.write_words: "
+            f"offset=0x{offset_bytes:x}, phys=0x{self.ddr_phys_base + offset_bytes:x}, "
+            f"words={len(words)}, bytes={len(payload)}, mem={self.mem_path}"
+        )
         fd, mem, page_offset = self._open_mapping(offset_bytes, len(payload))
         try:
             mem.seek(page_offset)
+            _trace("ReservedDdrMemory.write_words: about to write mmap payload")
             mem.write(payload)
+            _trace("ReservedDdrMemory.write_words: mmap write completed")
         finally:
             mem.close()
             os.close(fd)
@@ -188,10 +211,17 @@ class ReservedDdrMemory:
             raise ValueError("word_count must be positive")
 
         byte_count = word_count * UINT32_SIZE
+        _trace(
+            "ReservedDdrMemory.read_words: "
+            f"offset=0x{offset_bytes:x}, phys=0x{self.ddr_phys_base + offset_bytes:x}, "
+            f"words={word_count}, bytes={byte_count}, mem={self.mem_path}"
+        )
         fd, mem, page_offset = self._open_mapping(offset_bytes, byte_count)
         try:
             mem.seek(page_offset)
+            _trace("ReservedDdrMemory.read_words: about to read mmap payload")
             data = mem.read(byte_count)
+            _trace(f"ReservedDdrMemory.read_words: mmap read completed, bytes={len(data)}")
         finally:
             mem.close()
             os.close(fd)
@@ -217,6 +247,11 @@ class ReservedDdrMemory:
         page_offset = phys_addr - map_base
         map_size = page_offset + byte_count
 
+        _trace(
+            "ReservedDdrMemory._open_mapping: "
+            f"phys=0x{phys_addr:x}, page_size=0x{page_size:x}, "
+            f"map_base=0x{map_base:x}, page_offset=0x{page_offset:x}, map_size=0x{map_size:x}"
+        )
         fd = os.open(str(self.mem_path), os.O_RDWR | os.O_SYNC)
         try:
             mem = mmap.mmap(
@@ -230,6 +265,7 @@ class ReservedDdrMemory:
             os.close(fd)
             raise
 
+        _trace("ReservedDdrMemory._open_mapping: mmap completed")
         return fd, mem, page_offset
 
     def _validate_access(self, offset_bytes: int, byte_count: int) -> None:
@@ -279,11 +315,17 @@ class ElfPatcher:
         )
 
     def expected_value_count(self) -> int:
-        return len(self.read_template().expected_values)
+        count = len(self.read_template().expected_values)
+        _trace(f"ElfPatcher.expected_value_count: count={count}")
+        return count
 
     def patch(self, vector: DdrTestVector, output_path: Path | str) -> Path:
-        section = self.find_section()
         payload = vector.patch_bytes()
+        _trace(
+            "ElfPatcher.patch: "
+            f"input={self.elf_path}, output={output_path}, payload_bytes={len(payload)}"
+        )
+        section = self.find_section()
 
         if len(payload) != section["size"]:
             raise ValueError(
@@ -300,9 +342,11 @@ class ElfPatcher:
             shutil.copyfile(self.elf_path, output)
 
         with output.open("r+b") as elf:
+            _trace(f"ElfPatcher.patch: writing at file offset=0x{section['offset']:x}")
             elf.seek(section["offset"])
             elf.write(payload)
 
+        _trace("ElfPatcher.patch: done")
         return output
 
     def find_section(self) -> dict[str, int]:
@@ -341,6 +385,10 @@ class ElfPatcher:
         for header in headers:
             name = self._read_c_string(names, header["name_offset"])
             if name == self.section_name:
+                _trace(
+                    "ElfPatcher.find_section: found "
+                    f"addr=0x{header['address']:x}, off=0x{header['offset']:x}, size=0x{header['size']:x}"
+                )
                 return {
                     "address": header["address"],
                     "offset": header["offset"],
@@ -404,19 +452,37 @@ class DDRTester:
 
     def prepare(self) -> DdrTestVector:
         value_count = self.elf_patcher.expected_value_count()
-        return self.vector_generator.generate(value_count)
+        vector = self.vector_generator.generate(value_count)
+        _trace(
+            "DDRTester.prepare: generated "
+            f"words={value_count}, offset=0x{vector.offset_bytes:x}, phys=0x{vector.host_address:x}, "
+            f"values={format_words(vector.expected_values)}"
+        )
+        return vector
 
     def write_ddr(self, vector: DdrTestVector) -> bool:
+        _trace(
+            "DDRTester.write_ddr: start "
+            f"offset=0x{vector.offset_bytes:x}, phys=0x{vector.host_address:x}, "
+            f"values={format_words(vector.expected_values)}"
+        )
         readback = self.ddr_memory.write_and_read_words(
             vector.offset_bytes,
             vector.expected_values,
         )
         self.last_ps_initial_readback = readback
 
-        return readback == vector.expected_values
+        ok = readback == vector.expected_values
+        _trace(
+            "DDRTester.write_ddr: "
+            f"readback={format_words(readback)}, ok={ok}"
+        )
+        return ok
 
     def patch_elf(self, vector: DdrTestVector) -> Path:
-        return self.elf_patcher.patch(vector, self.patched_elf_path)
+        patched = self.elf_patcher.patch(vector, self.patched_elf_path)
+        _trace(f"DDRTester.patch_elf: patched={patched}")
+        return patched
 
     def read_xheep_written_values(self, vector: DdrTestVector) -> tuple[int, ...]:
         word_count = len(self.last_uart_written_values)
@@ -426,15 +492,26 @@ class DDRTester:
 
         readback = self.ddr_memory.read_words(vector.offset_bytes, word_count)
         self.last_ps_final_readback = readback
+        _trace(f"DDRTester.read_xheep_written_values: readback={format_words(readback)}")
         return readback
 
     def validate_xheep_write(self, vector: DdrTestVector) -> bool:
+        _trace(
+            "DDRTester.validate_xheep_write: "
+            f"uart_values={format_words(self.last_uart_written_values)}"
+        )
         if len(self.last_uart_written_values) != len(vector.expected_values):
+            _trace(
+                "DDRTester.validate_xheep_write: length mismatch "
+                f"uart={len(self.last_uart_written_values)}, expected={len(vector.expected_values)}"
+            )
             self.last_ps_final_readback = ()
             return False
 
         readback = self.read_xheep_written_values(vector)
-        return readback == self.last_uart_written_values
+        ok = readback == self.last_uart_written_values
+        _trace(f"DDRTester.validate_xheep_write: ok={ok}")
+        return ok
 
     def run_vpk180(self, elf_path: Path | str) -> bool:
         firmware = Path(elf_path).resolve()
@@ -463,20 +540,22 @@ class DDRTester:
             raise RuntimeError(f"UART capture failed: {uart_errors[0]}")
 
         try:
+            cmd = [
+                sys.executable,
+                str(runner_script),
+                "-f",
+                str(firmware),
+                "-l",
+                "on_chip",
+                "--uart",
+                self.uart_device,
+                "--baud",
+                str(self.uart_baud),
+                "--no-uart-flush",
+            ]
+            _trace(f"DDRTester.run_vpk180: running {' '.join(cmd)}")
             completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(runner_script),
-                    "-f",
-                    str(firmware),
-                    "-l",
-                    "on_chip",
-                    "--uart",
-                    self.uart_device,
-                    "--baud",
-                    str(self.uart_baud),
-                    "--no-uart-flush",
-                ],
+                cmd,
                 cwd=_REPO_ROOT,
                 capture_output=True,
                 text=True,
@@ -498,6 +577,13 @@ class DDRTester:
         self.last_runner_returncode = completed.returncode
         self.last_uart_output = b"".join(uart_chunks).decode(errors="replace")
         self.last_uart_written_values = self.parse_uart_write_values(self.last_uart_output)
+        _trace(
+            "DDRTester.run_vpk180: captured "
+            f"runner_stdout={len(completed.stdout)} chars, "
+            f"runner_stderr={len(completed.stderr)} chars, "
+            f"uart={len(self.last_uart_output)} chars, "
+            f"uart_values={format_words(self.last_uart_written_values)}"
+        )
 
         match = re.search(
             r"exit_valid\s*=\s*(true|false|[-+]?(?:0x[0-9a-fA-F]+|\d+))"
@@ -524,7 +610,12 @@ class DDRTester:
         self.last_xheep_exit_valid = exit_valid
         self.last_xheep_exit_value = exit_value
 
-        return completed.returncode == 0 and exit_valid == 1 and exit_value == 0
+        ok = completed.returncode == 0 and exit_valid == 1 and exit_value == 0
+        _trace(
+            "DDRTester.run_vpk180: "
+            f"exit_valid={exit_valid}, exit_value={exit_value}, ok={ok}"
+        )
+        return ok
 
     def _capture_uart(
         self,
@@ -553,6 +644,7 @@ class DDRTester:
                     break
                 chunks.append(data)
         except Exception as exc:
+            _trace(f"DDRTester._capture_uart: error={exc}")
             errors.append(exc)
             ready_event.set()
         finally:
@@ -588,9 +680,12 @@ class DDRTester:
         if indices != expected_indices:
             raise ValueError(f"incomplete UART write value indices: {indices}")
 
-        return tuple(values_by_index[index] for index in expected_indices)
+        values = tuple(values_by_index[index] for index in expected_indices)
+        _trace(f"DDRTester.parse_uart_write_values: values={format_words(values)}")
+        return values
 
     def run(self) -> bool:
+        _trace("DDRTester.run: start")
         vector = self.prepare()
         self.last_vector = vector
         self.last_ps_initial_readback = ()
@@ -598,6 +693,7 @@ class DDRTester:
         self.last_result = None
 
         ps_initial_write_ok = self.write_ddr(vector)
+        _trace(f"DDRTester.run: ps_initial_write_ok={ps_initial_write_ok}")
         if not ps_initial_write_ok:
             self.last_result = DdrTestResult(
                 passed=False,
@@ -610,11 +706,14 @@ class DDRTester:
 
         patched_elf = self.patch_elf(vector)
         runner_ok = self.run_vpk180(patched_elf)
+        _trace(f"DDRTester.run: runner_ok={runner_ok}")
         xheep_write_ok = False
         if runner_ok:
             xheep_write_ok = self.validate_xheep_write(vector)
+        _trace(f"DDRTester.run: xheep_write_ok={xheep_write_ok}")
 
         passed = ps_initial_write_ok and runner_ok and xheep_write_ok
+        _trace(f"DDRTester.run: passed={passed}")
         self.last_result = DdrTestResult(
             passed=passed,
             vector=vector,
@@ -647,14 +746,26 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--mem", default="/dev/mem", help="Memory device to mmap")
     parser.add_argument("--ddr-base", type=parse_int, default=DDR_PHYS_BASE)
     parser.add_argument("--ddr-size", type=parse_int, default=DDR_WINDOW_SIZE)
+    parser.add_argument("--offset", type=parse_int, default=None, help="Force DDR offset instead of choosing randomly")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible vectors")
+    parser.add_argument("--debug", action="store_true", help="Print debug traces")
     parser.add_argument("--show-output", action="store_true", help="Print captured runner and UART output")
     args = parser.parse_args(argv)
 
+    global _DEBUG
+    _DEBUG = args.debug
+
+    _trace(
+        "main: args "
+        f"elf={args.elf}, uart={args.uart}, baud={args.baud}, mem={args.mem}, "
+        f"ddr_base=0x{args.ddr_base:x}, ddr_size=0x{args.ddr_size:x}, "
+        f"offset={None if args.offset is None else hex(args.offset)}, seed={args.seed}"
+    )
     tester = DDRTester(args.elf, uart_device=args.uart, uart_baud=args.baud)
     tester.vector_generator = TestVectorGenerator(
         ddr_phys_base=args.ddr_base,
         ddr_window_size=args.ddr_size,
+        fixed_offset=args.offset,
         seed=args.seed,
     )
     tester.ddr_memory = ReservedDdrMemory(
