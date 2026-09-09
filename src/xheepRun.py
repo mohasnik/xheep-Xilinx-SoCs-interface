@@ -103,17 +103,19 @@ def shutdown_ocd(proc, fh):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("-o", "--overlay", required=True, help="Path to .bit")
+    ap.add_argument("-o", "--overlay", required=True, help="Path to .bit or .pdi")
     ap.add_argument("-f", "--firmware", required=True, help="Path to .elf or .bin")
     ap.add_argument("-l", "--linker", choices=["on_chip", "flash_load", "flash_exec"],
                     default="on_chip", help="Execution mode")
     ap.add_argument("--verify", action="store_true", help="Verify after load")
     ap.add_argument("--force", action="store_true", help="Force PL reload")
+
     args = ap.parse_args()
 
     bit = Path(args.overlay).resolve()
     fw = Path(args.firmware).resolve()
     cfg = Path("cfg/xheep_xilinx_xvc.cfg").resolve()
+
 
     for p, l in ((bit, "overlay"), (fw, "firmware"), (cfg, "cfg")):
         if not p.is_file():
@@ -131,6 +133,8 @@ def main() -> int:
     # Import drivers
     from xheepDriver import xheepDriver, xheepGPIO, xheepJTAG, xheepSPI, xheepFlashProgrammer
     from pynq import Overlay
+
+    # xheepDriver()
 
     if need_reload:
         log("info", "Loading bitstream...")

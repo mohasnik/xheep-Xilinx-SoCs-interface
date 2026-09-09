@@ -31,10 +31,31 @@ class xheepDriver():
     IP_SPI  = "axi_quad_spi"
 
 
-    def __init__(self, ):
-        self.jtag 
-        self.uart
-        self.gpio 
+    def __init__(self, overlay_path, **kwargs):
+        overlay_path = Path(overlay_path)
+        self.AXI_GPIO_ADDR = 0
+        self.AXI_GPIO_RNG  = 0
+        self.AXI_UART_ADDR = 0
+        self.AXI_UART_RNG  = 0
+        self.AXI_JTAG_ADDR = 0
+        self.AXI_JTAG_RNG  = 0
+
+    def _createUART(self, axi_uart_address : int):
+        self.uart = xheepUART(axi_uart_address)
+        self.uart.unbind()
+        return True
+
+    @abstractmethod
+    def _getBoardInfo(self) -> str:
+        return ""
+
+
+    
+
+        
+        
+        
+         
 
 
 

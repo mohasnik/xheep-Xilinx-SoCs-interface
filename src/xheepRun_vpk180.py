@@ -40,66 +40,66 @@ def elf_entry(path: Path) -> int:
         return struct.unpack_from("<Q", data, 0x18)[0]
     raise ValueError("Unknown ELF class")
 
+# SAME
+# def wait_tcp(host: str, port: int, timeout: float) -> None:
+#     deadline = time.monotonic() + timeout
+#     while time.monotonic() < deadline:
+#         try:
+#             with socket.create_connection((host, port), timeout=0.5):
+#                 return
+#         except OSError:
+#             time.sleep(0.1)
+#     raise TimeoutError(f"{host}:{port}")
 
-def wait_tcp(host: str, port: int, timeout: float) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                return
-        except OSError:
-            time.sleep(0.1)
-    raise TimeoutError(f"{host}:{port}")
-
-
-def ocd_cmd(cmds, host="127.0.0.1", port=4444, timeout=30.0) -> str:
-    token = f"__XHEEP_DONE_{time.monotonic_ns()}__"
-    with telnetlib.Telnet(host, port, timeout=timeout) as tn:
-        tn.read_until(b">", timeout=timeout)
-        for cmd in cmds:
-            tn.write(cmd.encode() + b"\n")
-        tn.write(f"echo {token}\n".encode())
-        buf = tn.read_until(token.encode(), timeout=timeout)
-    return buf.decode(errors="replace")
-
-
-def start_ocd(openocd: str, cfg: Path, log_file: Path, addr: int) -> Tuple[subprocess.Popen, object]:
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    fh = open(log_file, "wb", buffering=0)
-    proc = subprocess.Popen(
-        [openocd, "-c", f"set XVC_DEV_ADDR 0x{addr:08x}", "-f", str(cfg)],
-        stdout=fh,
-        stderr=fh,
-    )
-    return proc, fh
+# SAME
+# def ocd_cmd(cmds, host="127.0.0.1", port=4444, timeout=30.0) -> str:
+#     token = f"__XHEEP_DONE_{time.monotonic_ns()}__"
+#     with telnetlib.Telnet(host, port, timeout=timeout) as tn:
+#         tn.read_until(b">", timeout=timeout)
+#         for cmd in cmds:
+#             tn.write(cmd.encode() + b"\n")
+#         tn.write(f"echo {token}\n".encode())
+#         buf = tn.read_until(token.encode(), timeout=timeout)
+#     return buf.decode(errors="replace")
 
 
-def shutdown_ocd(proc, fh) -> None:
-    try:
-        ocd_cmd(["shutdown"], timeout=3.0)
-    except Exception:
-        pass
-    if proc and proc.poll() is None:
-        proc.terminate()
-        try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-    if fh:
-        fh.close()
+# def start_ocd(openocd: str, cfg: Path, log_file: Path, addr: int) -> Tuple[subprocess.Popen, object]:
+#     log_file.parent.mkdir(parents=True, exist_ok=True)
+#     fh = open(log_file, "wb", buffering=0)
+#     proc = subprocess.Popen(
+#         [openocd, "-c", f"set XVC_DEV_ADDR 0x{addr:08x}", "-f", str(cfg)],
+#         stdout=fh,
+#         stderr=fh,
+#     )
+#     return proc, fh
 
 
-def flush_uart(device: str, baud: int) -> None:
-    try:
-        import serial
+# def shutdown_ocd(proc, fh) -> None:
+#     try:
+#         ocd_cmd(["shutdown"], timeout=3.0)
+#     except Exception:
+#         pass
+#     if proc and proc.poll() is None:
+#         proc.terminate()
+#         try:
+#             proc.wait(timeout=2)
+#         except subprocess.TimeoutExpired:
+#             proc.kill()
+#             proc.wait()
+#     if fh:
+#         fh.close()
 
-        ser = serial.Serial(device, baud, timeout=0.1)
-        ser.reset_input_buffer()
-        ser.reset_output_buffer()
-        ser.close()
-    except Exception as exc:
-        log("warning", f"Could not flush UART {device}: {exc}")
+
+# def flush_uart(device: str, baud: int) -> None:
+#     try:
+#         import serial
+
+#         ser = serial.Serial(device, baud, timeout=0.1)
+#         ser.reset_input_buffer()
+#         ser.reset_output_buffer()
+#         ser.close()
+#     except Exception as exc:
+#         log("warning", f"Could not flush UART {device}: {exc}")
 
 
 def wait_exit(gpio: xheepStaticGPIO, timeout: float) -> Tuple[int, int]:
