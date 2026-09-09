@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Tuple
 
 from xheepDriver import log, xheepStaticFlashProgrammer, xheepStaticGPIO, xheepStaticJTAG
+from xheepDriver import xheepJTAG
 
 
 DEFAULT_JTAG_ADDR = 0xA4000000
@@ -220,7 +221,10 @@ def main() -> int:
         gpio.deassertReset()
         time.sleep(0.1)
 
-        jtag = xheepStaticJTAG(args.jtag_addr)
+        # jtag = xheepStaticJTAG(args.jtag_addr)
+        jtag = xheepJTAG(None, args.jtag_addr, 0x00010000)
+
+
         log("info", f"Starting OpenOCD for AXI JTAG at 0x{jtag.getAddr():08x}")
         proc, fh = start_ocd(args.openocd, cfg, ocd_log, jtag.getAddr())
 
