@@ -10,10 +10,10 @@ from .gpio_static import xheepStaticGPIO
 from .jtag_static import xheepStaticJTAG
 
 try:
+    from .jtag import xheepJTAG
     from .gpio import xheepGPIO
     from .uart import xheepUART
     from .spi import xheepSPI
-    # from .jtag import xheepJTAG
     from .flash import xheepFlashProgrammer
     from .driver import xheepDriver
 except ImportError:
