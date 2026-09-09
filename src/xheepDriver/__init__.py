@@ -7,10 +7,10 @@
 from .logger import log
 from .flash_static import xheepStaticFlashProgrammer
 from .gpio_static import xheepStaticGPIO
-from .jtag_static import xheepStaticJTAG
+# from .jtag_static import xheepStaticJTAG
+from .jtag import xheepJTAG
 
 try:
-    from .jtag import xheepJTAG
     from .gpio import xheepGPIO
     from .uart import xheepUART
     from .spi import xheepSPI
@@ -20,7 +20,6 @@ except ImportError:
     xheepGPIO = None
     xheepUART = None
     xheepSPI = None
-    # xheepJTAG = None
     xheepFlashProgrammer = None
     xheepDriver = None
 

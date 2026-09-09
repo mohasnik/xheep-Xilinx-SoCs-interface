@@ -13,7 +13,7 @@ import telnetlib
 from pathlib import Path
 from typing import Tuple
 
-from xheepDriver import log, xheepStaticFlashProgrammer, xheepStaticGPIO, xheepStaticJTAG
+from xheepDriver import log, xheepStaticFlashProgrammer, xheepStaticGPIO
 from xheepDriver import xheepJTAG
 
 
