@@ -13,14 +13,14 @@ try:
     from .gpio import xheepGPIO
     from .uart import xheepUART
     from .spi import xheepSPI
-    from .jtag import xheepJTAG
+    # from .jtag import xheepJTAG
     from .flash import xheepFlashProgrammer
     from .driver import xheepDriver
 except ImportError:
     xheepGPIO = None
     xheepUART = None
     xheepSPI = None
-    xheepJTAG = None
+    # xheepJTAG = None
     xheepFlashProgrammer = None
     xheepDriver = None
 
