@@ -25,15 +25,18 @@ class xheepUART:
     TIMEOUT_S = 3.0
     POLL_S = 0.05
 
-    def __init__(self, memAddr: int):
+    def __init__(self, memAddr: int, template_path=None):
         self.memAddr = int(memAddr)
         self.PLATFORM_DEV = f"{self.memAddr:08x}.serial"
-        
-        board = os.getenv("BOARD", "pynq-z2").lower()
-        if board == "aup-zu3":
-            self.DTS_TEMPLATE_PATH = Path("dts/uartlite-ultrascale.tpl")
+
+        if template_path is not None:
+            self.DTS_TEMPLATE_PATH = Path(template_path)
         else:
-            self.DTS_TEMPLATE_PATH = Path("dts/uartlite-zynq.tpl")
+            board = os.getenv("BOARD", "pynq-z2").lower()
+            if board == "aup-zu3":
+                self.DTS_TEMPLATE_PATH = Path("dts/uartlite-ultrascale.tpl")
+            else:
+                self.DTS_TEMPLATE_PATH = Path("dts/uartlite-zynq.tpl")
 
     def _patchDts(self) -> None:
         content = self.DTS_TEMPLATE_PATH.read_text()
