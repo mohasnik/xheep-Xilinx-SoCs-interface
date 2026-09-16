@@ -13,7 +13,7 @@ import telnetlib
 from pathlib import Path
 from typing import Tuple
 
-from xheepDriver import log, xheepStaticFlashProgrammer, xheepStaticGPIO
+from xheepDriver import log, xheepStaticFlashProgrammer, xheepStaticGPIO, xheepUART
 from xheepDriver import xheepJTAG
 
 
@@ -21,6 +21,7 @@ DEFAULT_JTAG_ADDR = 0xA4000000
 DEFAULT_GPIO_ADDR = 0xA4020000
 DEFAULT_SPI_ADDR = 0xA4030000
 DEFAULT_SPI_RANGE = 0x00010000
+DEFAULT_UART_ADDR = 0xA4040000
 DEFAULT_UART = "/dev/ttyUL0"
 DEFAULT_BAUD = 115200
 
@@ -120,6 +121,7 @@ def main() -> int:
     ap.add_argument("--gpio-addr", type=parse_int, default=parse_int(os.getenv("XHEEP_GPIO_ADDR", hex(DEFAULT_GPIO_ADDR))))
     ap.add_argument("--spi-addr", type=parse_int, default=parse_int(os.getenv("XHEEP_SPI_ADDR", hex(DEFAULT_SPI_ADDR))))
     ap.add_argument("--spi-range", type=parse_int, default=parse_int(os.getenv("XHEEP_SPI_RANGE", hex(DEFAULT_SPI_RANGE))))
+    ap.add_argument("--uart-addr", type=parse_int, default=parse_int(os.getenv("XHEEP_UART_ADDR", hex(DEFAULT_UART_ADDR))))
     ap.add_argument("--uart", default=os.getenv("XHEEP_UART", DEFAULT_UART))
     ap.add_argument("--baud", type=int, default=int(os.getenv("XHEEP_UART_BAUD", DEFAULT_BAUD)))
     ap.add_argument("--cfg", default="cfg/xheep_xilinx_xvc.cfg", help="OpenOCD AXI XVC config")
@@ -163,8 +165,14 @@ def main() -> int:
     flash = None
     proc = None
     fh = None
+    uart = None
 
     try:
+        log("info", f"Preparing AXI UARTLite at 0x{args.uart_addr:08x}")
+        uart = xheepUART(args.uart_addr, template_path=Path("dts/uartlite-vpk180.tpl"))
+        uart.unbind()
+        uart.bind()
+
         log("info", f"Using AXI GPIO at 0x{args.gpio_addr:08x}")
         gpio = xheepStaticGPIO(args.gpio_addr)
 
